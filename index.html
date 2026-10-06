@@ -166,7 +166,7 @@
     <!-- ================= 管理員後台介面 ================= -->
     <div id="adminView" class="hidden animate-fadeIn space-y-6">
       <!-- 後台子分頁按鈕 -->
-      <div class="bg-white rounded-2xl p-2 shadow-sm border border-slate-200 flex flex-wrap gap-2">
+      <div class="bg-white rounded-2xl p-2 shadow-sm border border-slate-200 flex flex-wrap items-center gap-2">
         <button id="tabSchedule" onclick="switchAdminTab('schedule')" class="flex-1 min-w-[120px] py-2.5 px-4 rounded-xl text-xs md:text-sm font-bold transition-all bg-slate-800 text-white shadow-md">
           <i class="fa-regular fa-calendar-plus mr-1.5"></i>開放時段設定
         </button>
@@ -175,6 +175,9 @@
         </button>
         <button id="tabSettings" onclick="switchAdminTab('settings')" class="flex-1 min-w-[120px] py-2.5 px-4 rounded-xl text-xs md:text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all">
           <i class="fa-solid fa-sliders mr-1.5"></i>信箱與注意事項
+        </button>
+        <button onclick="adminLogout()" class="py-2.5 px-4 rounded-xl text-xs md:text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all">
+          <i class="fa-solid fa-right-from-bracket mr-1"></i>登出
         </button>
       </div>
 
@@ -257,6 +260,12 @@
           </div>
 
           <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">管理員登入密碼</label>
+            <input type="password" id="adminPasswordInput" required class="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rose-300" placeholder="預設密碼為 0000">
+            <p class="text-[11px] text-slate-400 mt-1">您可以隨時變更後台密碼以確保資料安全。</p>
+          </div>
+
+          <div>
             <label class="block text-xs font-bold text-slate-700 mb-1">預約完成提醒注意事項 (顯示於完成彈窗)</label>
             <textarea id="adminNoticeInput" rows="5" required class="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rose-300 leading-relaxed"></textarea>
             <p class="text-[11px] text-slate-400 mt-1">您可在此說明取消規定、遲到保留時間或前置注意事項。</p>
@@ -270,6 +279,34 @@
     </div>
 
   </main>
+
+  <!-- ================= 管理員登入 Modal ================= -->
+  <div id="adminLoginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden animate-fadeIn">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 border border-rose-100">
+      <div class="text-center">
+        <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center mx-auto mb-2">
+          <i class="fa-solid fa-lock text-xl"></i>
+        </div>
+        <h3 class="text-lg font-bold text-slate-800">管理員身份驗證</h3>
+        <p class="text-xs text-slate-400 mt-1">請輸入後台登入密碼（預設密碼：0000）</p>
+      </div>
+
+      <form onsubmit="handleAdminLogin(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">密碼</label>
+          <input type="password" id="inputAdminPass" required placeholder="請輸入密碼" class="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rose-300 text-center tracking-widest font-bold">
+        </div>
+        <div class="flex gap-2">
+          <button type="button" onclick="closeAdminLoginModal()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs rounded-xl transition-all">
+            取消
+          </button>
+          <button type="submit" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-md transition-all">
+            確認登入
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- 頁尾聲明 -->
   <footer class="text-center py-4 text-xs text-slate-400 border-t border-rose-100/60 bg-white/50">
@@ -325,14 +362,20 @@
     // 初始化狀態，持久化至 LocalStorage
     let settings = JSON.parse(localStorage.getItem('eyebrow_html_settings')) || {
       email: 'designer@eyebrow-studio.com',
+      adminPassword: '0000',
       notice: '1. 請務必準時抵達，為保障品質，遲到15分鐘以上將取消預約。\n2. 施作前一天請勿熬夜、飲酒。\n3. 如需變更預約時間，請至少於 24 小時前告知。'
     };
+
+    if (!settings.adminPassword) {
+      settings.adminPassword = '0000';
+    }
 
     let availableSlots = JSON.parse(localStorage.getItem('eyebrow_html_slots')) || {};
     let bookings = JSON.parse(localStorage.getItem('eyebrow_html_bookings')) || [];
 
-    // 視圖狀態
+    // 視圖與登入狀態
     let currentView = 'customer'; // 'customer' or 'admin'
+    let isAdminLoggedIn = false;
     let currentAdminTab = 'schedule';
     let calendarDate = new Date(); // 顧客選擇月曆日期
     let selectedDateStr = null;
@@ -365,6 +408,12 @@
     }
 
     function switchView(view) {
+      if (view === 'admin' && !isAdminLoggedIn) {
+        document.getElementById('inputAdminPass').value = '';
+        document.getElementById('adminLoginModal').classList.remove('hidden');
+        return;
+      }
+
       currentView = view;
       const custView = document.getElementById('customerView');
       const admView = document.getElementById('adminView');
@@ -384,6 +433,29 @@
         renderAdminSlots();
         renderBookingsTable();
       }
+    }
+
+    function handleAdminLogin(e) {
+      e.preventDefault();
+      const inputPass = document.getElementById('inputAdminPass').value.trim();
+      if (inputPass === settings.adminPassword) {
+        isAdminLoggedIn = true;
+        closeAdminLoginModal();
+        switchView('admin');
+        showToast('管理員登入成功', 'fa-solid fa-circle-check text-emerald-400');
+      } else {
+        showToast('密碼錯誤，請重新輸入！', 'fa-solid fa-circle-xmark text-rose-400');
+      }
+    }
+
+    function closeAdminLoginModal() {
+      document.getElementById('adminLoginModal').classList.add('hidden');
+    }
+
+    function adminLogout() {
+      isAdminLoggedIn = false;
+      switchView('customer');
+      showToast('已安全登出後台');
     }
 
     function initMonthDropdown() {
@@ -747,15 +819,17 @@
 
     function initSettingsForm() {
       document.getElementById('adminEmailInput').value = settings.email;
+      document.getElementById('adminPasswordInput').value = settings.adminPassword || '0000';
       document.getElementById('adminNoticeInput').value = settings.notice;
     }
 
     function handleSettingsSave(e) {
       e.preventDefault();
       settings.email = document.getElementById('adminEmailInput').value.trim();
+      settings.adminPassword = document.getElementById('adminPasswordInput').value.trim() || '0000';
       settings.notice = document.getElementById('adminNoticeInput').value.trim();
       saveState();
-      showToast('設定已順利儲存！', 'fa-solid fa-circle-check text-emerald-400');
+      showToast('設定與密碼已順利儲存！', 'fa-solid fa-circle-check text-emerald-400');
     }
   </script>
 </body>
